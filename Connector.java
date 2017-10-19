@@ -7,7 +7,7 @@ import java.util.Properties;
 import java.util.Scanner;
 import java.sql.PreparedStatement;
 
-//TODO: User input
+//TODO: Accounts alignment
 
 public class Connector 
 {
@@ -23,16 +23,136 @@ public class Connector
 	{
 		try
 		{
+			System.out.println("LesterX's T Account Tool V0.5");
 			// Load the MySQL driver
 			Class.forName("com.mysql.jdbc.Driver");
-		
-			Connection connect = DriverManager.getConnection("jdbc:mysql://localhost:3306/t_account?useSSL=false","lester","623062");
 			
-			//insert_entry(connect,"Payment",20171019,"loan_payable",10000,"cash",10000);
-			list_accounts(connect);
-			show_entry(connect);
-			show_account(connect, "cash");
-			//delete_all(connect);
+			System.out.println("Connecting to MySQL ...");
+			Connection connect = DriverManager.getConnection("jdbc:mysql://localhost:3306/t_account?useSSL=false","lester","623062");
+			System.out.println("Connected!");
+			
+			// To read from user input
+			Scanner input = new Scanner(System.in);
+			
+			System.out.println("Please enter command: (Note: for now only 1 debit vs. 1 credit record is allowed");
+			System.out.println("  1. Show all journal entries");
+			System.out.println("  2. Show all accounts");
+			System.out.println("  3. Find a transaction record");
+			System.out.println("  4. Add a transaction record");
+			System.out.println("  5. Delete a transaction record");
+			System.out.println("  6. Delete all transaction records");
+			System.out.println("  7. Quit");
+			
+			while (true)
+			{
+				if (!input.hasNext())
+					break;
+				
+				String in = input.nextLine();
+				int in_num = Integer.parseInt(in);
+				
+				if (in_num == 7)
+					break;
+				
+				switch(in_num)
+				{
+					case 1:
+					{
+						show_entry(connect);
+						break;
+					}
+					case 2:
+					{
+						System.out.println("Do you want the detailed information for every account? [Y/N]");
+						String answer = input.nextLine();
+						if (answer.equals("Y") || answer.equals("y"))
+							show_all_accounts(connect);
+						else
+							list_accounts(connect);
+						break;
+					}
+					case 3:
+					{
+						System.out.println("Please enter the transaction number: (You can find transactions numbers in journal entries and account details)");
+						int num = Integer.parseInt(input.nextLine());
+						int max = max_id(connect);
+						if (max == 0)
+							System.out.println("There is no transaction record.");
+						else if (num > 0 && num < max)
+							find_trans(connect,num);
+						else
+							System.out.println("ID not found");
+						
+						break;
+					}
+					case 4:
+					{
+						System.out.println("Transaction name: ");
+						String name = input.nextLine();
+						System.out.println("Date: (in digits like: 20170101)");
+						int date = Integer.parseInt(input.nextLine());
+						System.out.println("Please enter in this form: 'Cash 1000'");
+						System.out.println("Debit: ");
+						String[] rec = input.nextLine().split(" ");
+						String dr = rec[0];
+						int dv = Integer.parseInt(rec[1]);
+						System.out.println("Credit: ");
+						rec = input.nextLine().split(" ");
+						String cr = rec[0];
+						int cv = Integer.parseInt(rec[1]);
+						
+						insert_entry(connect,name,date,dr,dv,cr,cv);
+						break;
+					}
+					case 5:
+					{
+						System.out.println("Please enter the transaction number to DELETE: (You can find transactions numbers in journal entries and account details)");
+						int num = Integer.parseInt(input.nextLine());
+						int max = max_id(connect);
+						if (max == 0)
+							System.out.println("There is no transaction record.");
+						else if (num > 0 && num < max)
+							delete_trans(connect, num);
+						else 
+							System.out.println("ID not found");
+						
+						break;
+					}
+					case 6:
+					{
+						System.out.println("ARE YOU SURE YOU WANT TO DELETE ALL TRANSACTION RECORDS ??? [Y/N]");
+						String enter = input.nextLine();
+						if (enter.equals("Y") || enter.equals("y"))
+						{
+							System.out.println("YOU REALLY REALLY WANT TO DO THIS ???");
+							enter = input.nextLine();
+							if (enter.equals("Y") || enter.equals("y"))
+							{
+								System.out.println("YOU REALLY REALLY REALLY WANT TO DO THIS ???");
+								enter = input.nextLine();
+								if (enter.equals("Y") || enter.equals("y"))
+									delete_all(connect);
+							}
+						}
+						
+						break;
+					}
+					default:
+					{
+						System.out.println("Invalid input");
+						break;
+					}
+				}
+				
+				System.out.println("Please enter command: (Note: for now only 1 debit vs. 1 credit record is allowed");
+				System.out.println("  1. Show all journal entries");
+				System.out.println("  2. Show all accounts");
+				System.out.println("  3. Find a transaction record");
+				System.out.println("  4. Add a transaction record");
+				System.out.println("  5. Delete a transaction record");
+				System.out.println("  6. Delete all transaction records");
+				System.out.println("  7. Quit");
+			}
 		}
 		catch (Exception e)
 		{
@@ -257,6 +377,29 @@ public class Connector
 	}
 	
 	/*
+	 * SHow records of all accounts
+	 */
+	private void show_all_accounts(Connection con) throws SQLException
+	{
+		try
+		{
+			Statement s = con.createStatement();
+			ResultSet rs = s.executeQuery("SELECT Name FROM account_list;");
+			while (rs.next())
+			{
+				String account = rs.getString("Name");
+				show_account(con,account);
+			}
+			
+			if (result_set != null)
+				result_set.close();
+			
+			if (statement != null)
+				statement.close();
+		}catch (SQLException e) {throw e;}
+	}
+	
+	/*
 	 * Show record of selected account
 	 */
 	private void show_account(Connection con, String account) throws SQLException
@@ -284,6 +427,82 @@ public class Connector
 					System.out.printf(format_cr, trans_id, cr);
 			}
 			System.out.println();
+			
+			if (rs != null)
+				rs.close();
+			if (s != null)
+				s.close();
+		}catch (SQLException e) {throw e;}
+	}
+	
+	/*
+	 * Find transaction information with transaction id
+	 */
+	private void find_trans(Connection con, int id) throws SQLException
+	{
+		try
+		{
+			String dr1 = "", cr1 = "";
+			Statement s = con.createStatement();
+			String sql = "SELECT * FROM journal_entry WHERE ID = " + id + ";";
+			ResultSet rs = s.executeQuery(sql);
+			if (rs.next())
+			{
+				String name = rs.getString("Name");
+				int date = rs.getInt("Date");
+				dr1 = rs.getString("Dr1_account");
+				int dr1v = rs.getInt("Dr1_value");
+				cr1 = rs.getString("Cr1_account");
+				int cr1v = rs.getInt("Cr1_value");
+				System.out.println("ID: " + id + "    Date: " + date + "    Name: " + name);
+				System.out.printf("  Dr. %15s %10d\n",dr1,dr1v);
+				System.out.printf("    Cr. %15s %10d\n",cr1,cr1v);
+				System.out.println();
+			}else
+			{
+				System.out.println("Transaction not found.");
+				return;
+			}
+			
+			if (result_set != null)
+				result_set.close();
+			
+			if (statement != null)
+				statement.close();
+			
+		}catch (SQLException e) {throw e;}
+		
+	}
+	
+	/*
+	 * Delete transaction with transaction id
+	 */
+	private void delete_trans(Connection con, int id) throws SQLException
+	{
+		try
+		{
+			String dr1 = "", cr1 = "";
+			PreparedStatement s = con.prepareStatement("SELECT * FROM journal_entry WHERE ID = ?;");
+			s.setInt(1, id);
+			ResultSet rs = s.executeQuery();
+			if (rs.next())
+			{
+				dr1 = rs.getString("Dr1_account");
+				cr1 = rs.getString("Cr1_account");
+			}else
+			{
+				System.out.println("Transaction not found");
+				return;
+			}
+			
+			String sql = "DELETE FROM " + dr1 + " WHERE Trans_ID = " + id + ";"; 
+			s.executeUpdate(sql);
+			sql = "DELETE FROM " + cr1 + " WHERE Trans_ID = " + id + ";"; 
+			s.executeUpdate(sql);
+			System.out.println("Deleted");
+			s = con.prepareStatement("DELETE FROM journal_entry WHERE ID = ?;");
+			s.setInt(1, id);
+			s.executeUpdate();
 			
 			if (rs != null)
 				rs.close();
@@ -325,7 +544,30 @@ public class Connector
 		}catch (SQLException e){throw e;}
 	}
 	
-	
+	/*
+	 * Return the latest transaction number
+	 */
+	private int max_id(Connection con) throws SQLException 
+	{
+		try
+		{
+			Statement s = con.createStatement();
+			ResultSet rs = s.executeQuery("SELECT MAX(ID) FROM journal_entry;");
+			int result = 0;
+			if (rs.next())
+				result = rs.getInt("MAX(ID)");
+			else
+				return 0;
+			
+			if (result_set != null)
+				result_set.close();
+			
+			if (statement != null)
+				statement.close();
+			
+			return result;
+		}catch (SQLException e) {throw e;}
+	}
 	
 	/*
 	 * Close connection
